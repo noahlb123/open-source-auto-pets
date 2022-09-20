@@ -1,0 +1,27 @@
+body {
+  background-color: black;
+}
+
+table, td {
+  border: 1px solid;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+td {
+  padding: 5px;
+}
+
+button {
+  background-color: black;
+}
+
+input {
+  background-color: black;
+}
+
+* {
+  color: white;
+}
