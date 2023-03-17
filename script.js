@@ -44,124 +44,12 @@ function idGenarator() {
 }
 var getUniqueID = idGenarator();
 
-class TableRenderer {
-  constructor(tableID, termID, player1, player2, stack) {
-    this.tableID = tableID;
-    this.termID = termID;
-    this.stack = stack;
-    this.term = document.getElementById(termID);
-    this.setTermListener( (e) => {
-      if (e.key == "Enter") {
-        e.preventDefault();
-        this.termMap[this.term.value.toLowerCase()]();
-        this.term.value = "";
-    }});
-    this.table = document.getElementById(tableID);
-    this.player1 = player1;
-    this.player2 = player2;
-    this.pets1 = player1.pets;
-    this.pets2 = player2.pets;
-    this.heading = this.table.rows[0].children;
-    this.nameRow = document.querySelector(".name");
-    this.names = this.nameRow.children;
-    this.nameData = [];
-    this.statsRow = document.querySelector(".stats");
-    this.stats = this.statsRow.children;
-    this.statsData = [];
-    this.tierRow = document.querySelector(".tier");
-    this.tiers = this.tierRow.children;
-    this.tierData = [];
-    this.levelRow = document.querySelector(".level");
-    this.levels = this.levelRow.children;
-    this.levelData = [];
-    this.foodRow = document.querySelector(".food");
-    this.foods = this.foodRow.children;
-    this.foodData = [];
-    this.renderHeading();
-    this.termMap = {
-      "": ()=> {this.stack.fightStep();},
-      help: ()=> {console.log(this.termMap)},
-      r: ()=> {console.log("roll")}
-    };
-  }
-
-  getTermText() {
-    return this.term.value;
-  }
-
-  setTermListener(f) {
-    this.term.addEventListener("keypress", f);
-  }
-
-  renderRow(htmlCollection, dataList) {
-    for(let i = 1; i < htmlCollection.length; i++) {
-      htmlCollection[i].innerHTML = dataList[i - 1];
-    }
-  }
-
-  renderHeading() {
-    let data = [];
-    for(let i = 5; i > 0; i--) {
-      data.push(player1.name + ", Pet " + i);
-    }
-    data.push("blank");
-    for(let i = 1; i < 6; i++) {
-      data.push(player2.name + ", Pet " + i);
-    }
-    this.renderRow(this.heading, data);
-  }
-
-  compileAttribute(
-    attributes,
-    f = (pet, attributes) => {return pet[attributes[0]];}
-  ) {
-    let data = [];
-    for(let i = 0; i < 5; i++) {
-      let pet = this.pets1[4 - i];
-      if (pet) {
-        data.push(f(pet, attributes));
-      } else {
-        data.push("");
-      }
-    }
-    data.push("");
-    for(let i = 0; i < 5; i++) {
-      let pet = this.pets2[i];
-      if (pet) {
-        data.push(f(pet, attributes));
-      } else {
-        data.push("");
-      }
-    }
-    return data;
-  }
-
-  renderAll() {
-    this.nameData = this.compileAttribute(["name"]);
-    this.tierData = this.compileAttribute(["tier"]);
-    this.levelData = this.compileAttribute(["level"]);
-    this.foodData = this.compileAttribute(["food"]);
-    this.statsData = this.compileAttribute(
-      ["attack","health"],
-      (pet, attributes) => {
-        return pet[attributes[0]] + "/" + pet[attributes[1]]
-      }
-    );
-    this.renderRow(this.names, this.nameData);
-    this.renderRow(this.stats, this.statsData);
-    this.renderRow(this.tiers, this.tierData);
-    this.renderRow(this.levels, this.levelData);
-    this.renderRow(this.foods, this.foodData);
-    //this.renderRow(this.foods, this.foodData);
-  }
-}
-
 class Player {
   constructor(name) {
     //remember this cannot refer to stack
     this.id = getUniqueID();
     this.name = name;
-    this.gold = 0;
+    this.gold = 10;
     this.shop = [];
     this.rand = mulberry32(seed[0]);
     this.inversePets = {};
@@ -178,25 +66,53 @@ class Player {
     }
   }
 
-  swapPetPos(pos1, pos2) {
-    let pet1 = this.pets[pos1];
-    let pet2 = this.pets[pos2];
-    this.pets[pos1] = pet2;
-    this.pets[pos2] = pet1;
-    this.inversePets[pet1.id] = pos2;
-    this.inversePets[pet2.id] = pos1;
-  }
-
   listPositions() {
     return Array.from(this.petPositions);
   }
 
-  getRandomPet() {
-    return this.pets[this.listPositions()[this.randInt(0, this.petPositions.size - 1)]];
+  listPositionsExcept(exceptions) {
+    let newPos = new Set(this.petPositions);
+    exceptions.forEach((item, i) => {
+      newPos.delete(item);
+    });
+    return Array.from(newPos);
+  }
+
+  getRandomPet(exceptions = []) {
+    let badPositions = [];
+    exceptions.forEach((item, i) => {
+      badPositions.push(item.position);
+    });
+    let goodPositions = this.listPositionsExcept(badPositions);
+    let index = this.randInt(0, goodPositions.length - 1);
+    return this.pets[goodPositions[index]];
   }
 
   getAllPets() {
     return Array.from(this.petSet);
+  }
+
+  getAllPetsExcept(positionExceptions) {
+    let positions = this.listPositionsExcept(positionExceptions);
+    let output = [];
+    positions.forEach((pos, i) => {
+      let pet = this.pets[pos];
+      if (pet) {
+        output.push(pet);
+      }
+    });
+    return output;
+  }
+
+  getNextPets(position, numberPets = 1, direction = 1) {
+    let output = [];
+    for (let i = 1; i < numberPets + 1; i++) {
+      let petIndex = position + direction * i;
+      if (this.petPositions.has(petIndex)) {
+        output.push(this.pets[petIndex]);
+      }
+    }
+    return output;
   }
 
   randInt(min, max) {
@@ -207,17 +123,63 @@ class Player {
     return Math.floor(this.rand() * (max - min) + min);
   }
 
+  swapPetPos(pos1, pos2) {
+    let pet1 = ((!!this.pets[pos1]) ? this.pets[pos1] : null);
+    let pet2 = ((!!this.pets[pos2]) ? this.pets[pos2] : null);
+    let id1 = ((!!pet1) ? pet1.id : null);
+    let id2 = ((!!pet2) ? pet2.id : null);
+    this.pets[pos2] = pet1;
+    this.pets[pos1] = pet2;
+    this.petPositions.add(pos1);
+    this.petPositions.add(pos2);
+    if (!!id1) {
+      this.inversePets[id1] = pos2;
+      pet1.position = pos2;
+    } else {
+      this.petPositions.delete(pos2);
+    }
+    if (!!id2) {
+      this.inversePets[id2] = pos1;
+      pet2.position = pos1;
+    } else {
+      this.petPositions.delete(pos1);
+    }
+  }
+
   //may need more error handeling here
-  addPet(pet, position) {
-    this.pets[position] = pet;
-    this.inversePets[pet.id] = position;
-    this.petSet.add(pet);
-    this.petNumber++;
-    this.petPositions.add(position);
-    if (this.frontPetNum === null) {
-      this.frontPetNum = position;
-    } else if (this.frontPetNum > position) {
-      this.frontPetNum = position;
+  addPet(pet) {
+    if (this.petNumber <= 5) {
+      let position = pet.position;
+      this.pets[position] = pet;
+      this.inversePets[pet.id] = position;
+      this.petSet.add(pet);
+      this.petNumber++;
+      this.petPositions.add(position);
+      if (this.frontPetNum === null) {
+        this.frontPetNum = position;
+      } else if (this.frontPetNum > position) {
+        this.frontPetNum = position;
+      }
+    }
+  }
+
+  addToFront(pet) {
+    let n = 5;
+    if (this.petNumber < n) {
+      let iterations = n ** 2;
+      for (let c = 0; c < iterations; c++) {
+        let index = n - 1;
+        while (index >= 1) {
+          let pet = this.pets[index];
+          let nextPet = this.pets[index - 1];
+          if (!pet && !!nextPet) {
+            this.swapPetPos(index, index - 1);
+          }
+          index--;
+        }
+      }
+      pet.position = 0;
+      this.addPet(pet);
     }
   }
 
@@ -252,15 +214,16 @@ class Player {
 }
 
 class GameStack {
-  constructor(player1, player2) {
+  constructor(player1, player2, shop) {
     this.player1 = player1;
     this.player2 = player2;
+    this.shop = shop;
     this.stackEmpty = true;
     this.internalStack = [];
     this.gameHappening = false;
     this.id = getUniqueID();
     this.renderer = new TableRenderer(
-      "game-table", "terminal", player1, player2, this
+      "game-table", "shop-table", "terminal", player1, player2, this, this.shop
     );
     this.players = {
       1: player1,
@@ -278,21 +241,32 @@ class GameStack {
       [player1.id, player2],
       [player2.id, player1]
     ]);
-    this.inverseActivePets = {}
+    this.inverseActivePets = {};
+    //this.renderer.renderShop();
   }
 
-  push(func, playerID, params) {
-    this.internalStack.push([func, params]);
+  push(func, params, pet = null) {
+    this.internalStack.push([func, params, pet]);
     this.stackEmpty = false;
   }
 
   pop() {
-    let [func, params] = this.internalStack.pop();
-    func(params);
+    let [func, params, pet] = this.internalStack.pop();
+    if (this.petCanDoAbility(pet)) {
+      func(params);
+    }
     if (this.internalStack.length == 0) {
       this.stackEmpty = true;
     }
     console.log("ability resolved");
+  }
+
+  petCanDoAbility(pet) {
+    if (pet) {
+      return (pet.health >= 0) || pet.postDeathAbility;
+    } else {
+      return false;
+    }
   }
 
   getAllPets() {
@@ -301,6 +275,18 @@ class GameStack {
 
   getOpponent(playerID) {
     return this.opponentMap[playerID];
+  }
+
+  autoActivePet(player) {
+    if (player.petNumber == 0) {
+      //need to fix this for if 2 players lose at same time
+      this.gameHappening = false;
+    } else {
+      let positions = player.petPositions;
+      let minPos = Math.min.apply(this, [...positions]);
+      let frontPet = player.pets[minPos];
+      this.setActivePet(frontPet, player);
+    }
   }
 
   setActivePet(pet, player) {
@@ -331,6 +317,9 @@ class GameStack {
       this.pop();
     } else if (this.gameHappening) {
       this.activePets[1].fight(this.activePets[2]);
+    } if (this.gameHappening) {
+      this.autoActivePet(this.player1);
+      this.autoActivePet(this.player2);
     }
     this.renderer.renderAll();
   }
@@ -348,168 +337,18 @@ class GameStack {
   }
 }
 
-class Pet {
-  constructor(attack, health, baseAttack, baseHealth, tier, cost, level, stack, player, name) {
-    this.attack = attack;
-    this.health = health;
-    this.baseAttack = baseAttack;
-    this.baseHealth = baseHealth;
-    this.tier = tier;
-    this.cost = cost;
-    this.level = level;
-    this.stack = stack;
-    this.player = player;
-    this.name = name;
-    this.food = "";
-    this.lvl1Ability = null;
-    this.lvl2Ability = null;
-    this.lvl3Ability = null;
-    this.activeAbility = null;
-    this.id = getUniqueID();
-  }
-
-  setAbility(ability) {
-    this.activeAbility = ability;
-  }
-
-  changeHealth(amount) {
-    if (this.health > 0) {
-      this.health += amount;
-      if (this.health <= 0) {
-        this.player.removePet(this);
-        this.stack.removeActivePet(this, this.player);
-        this.die();
-      } else if (amount < 0) {
-        this.hurt();
-      } else if (this.health > 50) {
-        this.health = 50;
-      }
-    }
-  }
-
-  hurt() {
-    //only used for abilities
-  }
-
-  die() {
-    //only used for abilities
-  }
-
-  changeAttack(amount) {
-    this.attack += amount;
-    if (this.attack > 50) {
-      this.attack = 50;
-    }
-  }
-
-  getPosition() {
-    return this.player.getPetPosition(this);
-  }
-
-  getOpponent() {
-    return this.stack.getOpponent(this.player.id);
-  }
-
-  ability(params, ability=this.activeAbility) {
-    this.stack.push(ability, params);
-    console.log(this.name + " ability triggered");
-  }
-
-  fight(pet) {
-    console.log(pet.name + " fought " + this.name);
-    this.changeHealth(-pet.attack);
-    pet.changeHealth(-this.attack);
-    //might need line about ability here
-  }
-
-  eat(food) {
-    food.pet = this;
-    food.effect();
-  }
-}
-
-class Blowfish extends Pet {
-  constructor(attack, health, cost, level, stack, player) {
-    super(attack, health, 3, 5, 3, cost, level, stack, player, "Blowfish");
-    this.lvl1Ability = (p)=>{this.getOpponent().getRandomPet().changeHealth(-2);};
-    this.lvl2Ability = (p)=>{this.getOpponent().getRandomPet().changeHealth(-4);};
-    this.lvl3Ability = (p)=>{this.getOpponent().getRandomPet().changeHealth(-6);};
-    this.activeAbility = this.lvl1Ability;
-  }
-
-  hurt() {
-    this.ability();
-  }
-}
-
-class Food {
-  constructor(name, cost, effect) {
-    this.name = name;
-    this.cost = cost;
-    this.effect = effect;
-    this.pet = null;
-  }
-
-  setPet(pet) {
-    this.pet = pet;
-  }
-}
-
-class Apple extends Food {
-  constructor() {
-    super(
-      "Apple",
-      3,
-      ()=> {
-        this.pet.changeAttack(1);
-        this.pet.changeHealth(1);
-      }
-    );
-  }
-}
-
-class Garlic extends Food {
-  constructor() {
-    super(
-      "Garlic",
-      3,
-      ()=> {
-        this.pet.food = "Garlic";
-      }
-    );
-  }
-}
-
-class Hedgehog extends Pet {
-  constructor(attack, health, cost, level, stack, player) {
-    super(attack, health, 3, 2, 2, cost, level, stack, player, "Hedgehog");
-    this.lvl1Ability = (p)=>{p.changeHealth(-2);};
-    this.lvl2Ability = (p)=>{p.changeHealth(-4);};
-    this.lvl3Ability = (p)=>{p.changeHealth(-6);};
-    this.activeAbility = this.lvl1Ability;
-  }
-
-  die() {
-    console.log("died");
-    this.stack.getAllPets().forEach((item, i) => {
-      this.ability(null, ()=>{this.activeAbility(item)});
-    });
-  }
-}
 
 //initialize instances
 var player1 = new Player("Player1");
 var player2 = new Player("Player2");
-var stack = new GameStack(player1, player2);
-/*for(let i = 0; i < 5; i++) {
-  player1.addPet(new Pet(1, 3, 0, 0, 1, 3, 1, stack, player1, i), i);
-  player2.addPet(new Pet(1, 3, 0, 0, 1, 3, 1, stack, player2, i), i);
-}*/
-player1.addPet(new Hedgehog(3, 2, 3, 2, stack, player1), 0);
-player1.addPet(new Pet(1, 5, 0, 0, 1, 3, 1, stack, player1, "Na"), 1);
-player2.addPet(new Hedgehog(3, 2, 3, 2, stack, player2), 0);
-player2.addPet(new Pet(1, 5, 0, 0, 1, 3, 1, stack, player2, "Na"), 1);
-player2.addPet(new Blowfish(3, 5, 3, 3, stack, player2), 2);
+var shop = new Shop();
+var stack = new GameStack(player1, player2, shop);
+shop.addRenderer(stack.renderer);
+shop.roll(player1.rand);
+player1.addToFront(new Sloth(1, 6, 3, 1, stack, player1, -1));
+player2.addPet(new Sloth(1, 1, 3, 1, stack, player2, 1));
+player2.addPet(new Sloth(1, 1, 3, 1, stack, player2, 2));
+player2.addPet(new Mammoth(1, 1, 3, 1, stack, player2, 0));
 
 stack.initializeCombat();
 stack.renderer.renderAll();
@@ -517,8 +356,11 @@ stack.renderer.renderAll();
 let button = document.getElementById("step-button");
 button.addEventListener("click", (e) => {stack.fightStep();});
 
-console.log("done.");
-
 //to do
+//make shop hold pets as instances rather than class functions
+//finish shop buy functions
 //separate pet data structure 2: into in combat and outside, instead I could set base stats
-//sop might remove abilities from stack after pet death
+//sloth vs rat sloth gives error
+//fix win conditinos
+//fix addtofront so it doesnt push other pets to back
+//badger rounds down
